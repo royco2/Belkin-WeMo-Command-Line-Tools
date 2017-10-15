@@ -20,7 +20,7 @@ USAGE_TEXT="-h [ IP/HOSTNAME ] -a [ ACTION ] [[ -ver ] | [ -? ]] | [ -s ] | [ -v
 
 Arguments:
     [ -h | --host ]    IP_ADDRESS | HOSTNAME
-    [ -a | --action ]  ON | OFF | GETSTATE | GETSIGNALSTRENGTH | GETNAME | SETNAME NAME
+    [ -a | --action ]  ON | OFF | GETSTATE | GETSIGNALSTRENGTH | GETPOWER | GETNAME | SETNAME NAME
 
 Optional Arguments: 
     [ -s | --silent ]        
@@ -188,7 +188,7 @@ filterExtractValue ()
     if testBoolTrue "${EXTRACT_VALUE_FROM_RESPONSE}"
     then
         # Normal run, so lets grab just the value the user wants to see
-        grep '<BinaryState>\|<SignalStrength>\|<FriendlyName>'                 |
+        grep '<BinaryState>\|<SignalStrength>\|<FriendlyName>\|<InsightParams>'                 |
             cut -d '>' -f2                                                     |
             cut -d '<' -f1
     else
@@ -210,6 +210,23 @@ filterHumanizeBinary ()
         cat -
     fi
 }
+
+filterInsightParam ()
+{
+    # If we are running in any of the debug modes, we don't want to alter output
+    if testBoolTrue "${EXTRACT_VALUE_FROM_RESPONSE}"
+    then
+        # Normal run, so lets grab just the value the user wants to see
+ 	sed 's/|/ /g' 			|
+	awk '{ print $8 }'
+    else
+        # Running in a debug/verbose/trace mode so lets just let it pass through
+        cat -
+        printf '\n'
+    fi
+
+}
+
 
 #123456789o123456789o123456789o123456789o123456789o123456789o123456789o123456789
 # Execution Start Point - Martial Arguments                                    #
@@ -240,7 +257,8 @@ do
                 [Oo][Nn]                                                                | \
                 [Oo][Ff][Ff]                                                            | \
                 [Gg][Ee][Tt][Ss][Ii][Gg][Nn][Aa][Ll][Ss][Tt][Rr][Ee][Nn][Gg][Tt][Hh]    | \
-                [Gg][Ee][Tt][Nn][Aa][Mm][Ee] )
+                [Gg][Ee][Tt][Nn][Aa][Mm][Ee] 						| \
+		[Gg][Ee][Tt][Pp][Oo][Ww][Ee][Rr] )
                     RUN_ACTION="${1}"
                     shift
                     ;;
@@ -432,6 +450,26 @@ else
         handleOutput                                                           |
         filterXmlClean
         ;;
+    [Gg][Ee][Tt][Pp][Oo][Ww][Ee][Rr] )
+        printf '%s\n'                                                          \
+        '<?xml version="1.0" encoding="utf-8"?>
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                    s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+            <s:Body>
+                <u:GetInsightParams xmlns:u="urn:Belkin:service:insight:1" />
+            </s:Body>
+        </s:Envelope>'                                                         |
+        restPostXmlStdinBelkinSoap                                             \
+            ${VERBOSE_FLAGstr} ${TRACE_FLAGstr} ${TRACE_TIME_FLAGstr}          \
+            --soap 'urn:Belkin:service:insight:1#GetInsightParams'            \
+            --url "http://${DEVICE_HOST}:${PORT}/upnp/control/insight1"     |
+        filterExtractValue                                                     |
+        handleOutput                                                           |
+        filterXmlClean							|
+	filterInsightParam						|
+	{ read powermW; echo $((powermW / 1000)); }
+        ;;
+
     "" )
         echo
         echoError "${SCRIPTfile}: Need to specify an ACTION as an argument"
